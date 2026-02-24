@@ -1469,7 +1469,7 @@ def run_full_stock_only(pg) -> None:
         LOG.warning("Skipping mapping refresh; core.bom_unique_materials missing")
 
 
-def run_incremental(pg) -> None:
+def run_incremental(pg, run_refresh_jobs: bool = True) -> None:
     global LAST_CORE_RUN, LAST_DASHBOARD_RUN, LAST_OPEN_ORDER_RUN
     bom_last_hid = get_max_bom_hid_pg(pg)
     stock_last_hid = get_max_stock_hid_pg(pg)
@@ -1488,20 +1488,20 @@ def run_incremental(pg) -> None:
     incremental_raw_current_stock(pg)
     incremental_current_stock_by_variant(pg)
 
-    if OPEN_ORDER_SECONDS > 0:
+    if run_refresh_jobs and OPEN_ORDER_SECONDS > 0:
         now = datetime.now()
         if LAST_OPEN_ORDER_RUN is None or (now - LAST_OPEN_ORDER_RUN).total_seconds() >= OPEN_ORDER_SECONDS:
             refresh_open_orders(pg)
             LAST_OPEN_ORDER_RUN = now
 
-    if CORE_5MIN_SQL and CORE_5MIN_SECONDS > 0:
+    if run_refresh_jobs and CORE_5MIN_SQL and CORE_5MIN_SECONDS > 0:
         now = datetime.now()
         if LAST_CORE_RUN is None or (now - LAST_CORE_RUN).total_seconds() >= CORE_5MIN_SECONDS:
             LOG.info("Running core refresh: %s", CORE_5MIN_SQL)
             execute_sql_file(pg, CORE_5MIN_SQL)
             LAST_CORE_RUN = now
 
-    if CORE_DASHBOARD_SQL and CORE_DASHBOARD_SECONDS > 0:
+    if run_refresh_jobs and CORE_DASHBOARD_SQL and CORE_DASHBOARD_SECONDS > 0:
         now = datetime.now()
         if LAST_DASHBOARD_RUN is None or (now - LAST_DASHBOARD_RUN).total_seconds() >= CORE_DASHBOARD_SECONDS:
             LOG.info("Running dashboard refresh: %s", CORE_DASHBOARD_SQL)
@@ -1544,59 +1544,94 @@ def run_weekly(pg) -> None:
     LAST_WEEKLY_RUN = datetime.now()
     LOG.info("Weekly refresh complete")
 
-def run_bootstrap(pg) -> None:
+
+def run_weekly_forecast_pipeline(pg) -> None:
     global LAST_WEEKLY_RUN
+    if CORE_WEEKLY_PRE_SQL:
+        LOG.info("Running weekly pre-forecast SQL: %s", CORE_WEEKLY_PRE_SQL)
+        execute_sql_file(pg, CORE_WEEKLY_PRE_SQL)
+
+    if FORECAST_COMMAND:
+        LOG.info("Running forecast command")
+        result = subprocess.run(FORECAST_COMMAND, shell=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Forecast command failed with code {result.returncode}")
+    else:
+        LOG.warning("FORECAST_COMMAND not set; skipping forecast run")
+
+    if CORE_WEEKLY_POST_SQL:
+        LOG.info("Running weekly post-forecast SQL: %s", CORE_WEEKLY_POST_SQL)
+        execute_sql_file(pg, CORE_WEEKLY_POST_SQL)
+
+    LAST_WEEKLY_RUN = datetime.now()
+
+
+def run_post_weekly_refreshes(pg) -> None:
+    if OPEN_ORDER_SECONDS > 0:
+        refresh_open_orders(pg)
+
+    if CORE_5MIN_SQL:
+        LOG.info("Running core refresh: %s", CORE_5MIN_SQL)
+        execute_sql_file(pg, CORE_5MIN_SQL)
+
+    if CORE_DASHBOARD_SQL:
+        LOG.info("Running dashboard refresh: %s", CORE_DASHBOARD_SQL)
+        execute_sql_file(pg, CORE_DASHBOARD_SQL)
+
+
+def run_bootstrap(pg) -> None:
     LOG.info("Bootstrap starting")
     run_full(pg, include_monthly_refresh=False)
     LOG.info("Bootstrap full load complete; running one live incremental catch-up")
     with use_fb_dsn(FB_DSN_LIVE):
-        run_incremental(pg)
+        run_incremental(pg, run_refresh_jobs=False)
     LOG.info("Live incremental catch-up complete; running monthly seat refresh")
     run_monthly_seat(pg)
-
-    if CORE_WEEKLY_PRE_SQL:
-        LOG.info("Running weekly pre-forecast SQL: %s", CORE_WEEKLY_PRE_SQL)
-        execute_sql_file(pg, CORE_WEEKLY_PRE_SQL)
-
-    if FORECAST_COMMAND:
-        LOG.info("Running forecast command")
-        result = subprocess.run(FORECAST_COMMAND, shell=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Forecast command failed with code {result.returncode}")
-    else:
-        LOG.warning("FORECAST_COMMAND not set; skipping forecast run")
-
-    if CORE_WEEKLY_POST_SQL:
-        LOG.info("Running weekly post-forecast SQL: %s", CORE_WEEKLY_POST_SQL)
-        execute_sql_file(pg, CORE_WEEKLY_POST_SQL)
-
-    LAST_WEEKLY_RUN = datetime.now()
+    run_weekly_forecast_pipeline(pg)
+    run_post_weekly_refreshes(pg)
     LOG.info("Bootstrap complete")
 
 
+def run_bootstrap_continue(pg) -> None:
+    """
+    Continue bootstrap from live catch-up stage after a completed full load.
+    Runs live incremental catch-up, monthly seat, then weekly forecast pipeline.
+    """
+    LOG.info("Bootstrap continue starting (skip full load)")
+    with use_fb_dsn(FB_DSN_LIVE):
+        run_incremental(pg, run_refresh_jobs=False)
+    LOG.info("Live incremental catch-up complete; running monthly seat refresh")
+    run_monthly_seat(pg)
+    run_weekly_forecast_pipeline(pg)
+    run_post_weekly_refreshes(pg)
+    LOG.info("Bootstrap continue complete")
+
+
 def run_bootstrap_stock_only(pg) -> None:
-    global LAST_WEEKLY_RUN
     LOG.info("Bootstrap (stock-only) starting")
     run_full_stock_only(pg)
-
-    if CORE_WEEKLY_PRE_SQL:
-        LOG.info("Running weekly pre-forecast SQL: %s", CORE_WEEKLY_PRE_SQL)
-        execute_sql_file(pg, CORE_WEEKLY_PRE_SQL)
-
-    if FORECAST_COMMAND:
-        LOG.info("Running forecast command")
-        result = subprocess.run(FORECAST_COMMAND, shell=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Forecast command failed with code {result.returncode}")
-    else:
-        LOG.warning("FORECAST_COMMAND not set; skipping forecast run")
-
-    if CORE_WEEKLY_POST_SQL:
-        LOG.info("Running weekly post-forecast SQL: %s", CORE_WEEKLY_POST_SQL)
-        execute_sql_file(pg, CORE_WEEKLY_POST_SQL)
-
-    LAST_WEEKLY_RUN = datetime.now()
+    run_weekly_forecast_pipeline(pg)
+    run_post_weekly_refreshes(pg)
     LOG.info("Bootstrap (stock-only) complete")
+
+
+def run_complete_with_live_incremental(pg) -> None:
+    """
+    Complete full-load flow using live incremental catch-up only (no delete/reload),
+    then run monthly seat and weekly forecast pipeline.
+    """
+    LOG.info("Live completion starting (incremental-only)")
+
+    with use_fb_dsn(FB_DSN_LIVE):
+        run_incremental(pg, run_refresh_jobs=False)
+        full_load_stock_master(pg)
+
+    LOG.info("Live incremental catch-up complete; running monthly seat refresh")
+    run_monthly_seat(pg)
+    run_weekly_forecast_pipeline(pg)
+    run_post_weekly_refreshes(pg)
+    LOG.info("Live completion complete")
+
 
 def run_monthly_seat(pg) -> None:
     global LAST_MONTHLY_RUN
@@ -1618,7 +1653,9 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="run one incremental pass and exit")
     parser.add_argument("--weekly", action="store_true", help="run weekly pipeline and exit")
     parser.add_argument("--bootstrap", action="store_true", help="run first-time bootstrap and exit")
+    parser.add_argument("--bootstrap-continue", action="store_true", help="continue bootstrap after full load using live catch-up")
     parser.add_argument("--bootstrap-stock-only", action="store_true", help="bootstrap without raw_bom_consumption")
+    parser.add_argument("--complete-live", action="store_true", help="run live incremental catch-up, then monthly+weekly")
     args = parser.parse_args()
 
     pg = connect_pg()
@@ -1654,8 +1691,20 @@ def main() -> None:
         close_fb()
         return
 
+    if args.bootstrap_continue:
+        run_bootstrap_continue(pg)
+        pg.close()
+        close_fb()
+        return
+
     if args.bootstrap_stock_only:
         run_bootstrap_stock_only(pg)
+        pg.close()
+        close_fb()
+        return
+
+    if args.complete_live:
+        run_complete_with_live_incremental(pg)
         pg.close()
         close_fb()
         return

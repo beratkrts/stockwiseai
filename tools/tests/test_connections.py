@@ -42,7 +42,6 @@ def connect_fb():
         f"DSN={dsn};",
         f"DSN={dsn};CHARSET={charset};",
         f"DRIVER=FirebirdODBC;DBNAME={host}/{port}:{db_path};CHARSET={charset};",
-        f"DRIVER=/usr/lib/libOdbcFb.so;DBNAME={host}/{port}:{db_path};CHARSET={charset};",
     ]
 
     last_exc = None

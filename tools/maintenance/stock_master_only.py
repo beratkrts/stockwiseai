@@ -1,8 +1,11 @@
 import sys
+import sys
+from pathlib import Path
 
 
 def main() -> None:
-    sys.path.append("/app/etl")
+    etl_dir = Path(__file__).resolve().parents[2] / "etl"
+    sys.path.append(str(etl_dir))
     import raw_sync as r
 
     pg = r.connect_pg()

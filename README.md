@@ -46,7 +46,7 @@ c:\tkis_stockwise\.venv\Scripts\python.exe -m pip install -r backend\requirement
 2. Baglanti testi:
 
 ```bat
-python etl\test_connections.py
+python tools\tests\test_connections.py
 ```
 
 3. Frontend:
@@ -168,7 +168,7 @@ Onemli:
 
 - Firebird ODBC ve fbclient bitness uyumunu kontrol edin (64-bit Python -> 64-bit client).
 - `FBCLIENT.DLL` erisimi dogrulayin.
-- `python etl\test_connections.py` ile tekrar test edin.
+- `python tools\tests\test_connections.py` ile tekrar test edin.
 
 ### Reboot sonrasi servis acilmiyor
 

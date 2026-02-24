@@ -1,15 +1,16 @@
 import os
 
+from dotenv import load_dotenv
+import pyodbc
+
 
 def normalize_fb_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
 def main() -> None:
+    load_dotenv()
     dsn = os.getenv("FB_ODBC_DSN", "test")
-    os.environ["ODBCINI"] = "/etc/odbc.ini"
-    os.environ["ODBCSYSINI"] = "/etc"
-    os.environ["ODBCINSTINI"] = "/etc/odbcinst.ini"
     user = os.getenv("FB_USER", "OWNER")
     password = os.getenv("FB_PASSWORD", "")
     charset = os.getenv("FB_CHARSET", "WIN1254")
@@ -17,20 +18,14 @@ def main() -> None:
     port = os.getenv("FB_PORT", "3050")
     db_path = normalize_fb_path(os.getenv("FB_DB", ""))
 
-    import pyodbc
     pyodbc.pooling = False
-    print("ODBCINI:", os.environ.get("ODBCINI"))
-    print("ODBCSYSINI:", os.environ.get("ODBCSYSINI"))
-    print("ODBCINSTINI:", os.environ.get("ODBCINSTINI"))
     print("drivers:", pyodbc.drivers())
     print("datasources:", pyodbc.dataSources())
 
     conn_strings = [
         f"DSN={dsn};",
-        f"DSN={dsn};USER={user};PASSWORD={password};CHARSET={charset};",
         f"DSN={dsn};UID={user};PWD={password};CHARSET={charset};",
-        f"DRIVER=FirebirdODBC;DBNAME={host}/{port}:{db_path};USER={user};PASSWORD={password};CHARSET={charset};",
-        f"DRIVER=/usr/lib/libOdbcFb.so;DBNAME={host}/{port}:{db_path};USER={user};PASSWORD={password};CHARSET={charset};",
+        f"DRIVER=FirebirdODBC;DBNAME={host}/{port}:{db_path};UID={user};PWD={password};CHARSET={charset};",
     ]
 
     last_exc = None
@@ -44,9 +39,10 @@ def main() -> None:
         except pyodbc.Error as exc:
             last_exc = exc
             print("ODBC connect failed:", conn_str, exc)
-            continue
+
     if conn is None:
         raise last_exc
+
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM RDB$DATABASE")
     row = cur.fetchone()

@@ -1,5 +1,8 @@
 import argparse
 import sys
+from pathlib import Path
+import argparse
+import sys
 
 
 def main() -> None:
@@ -12,7 +15,8 @@ def main() -> None:
     if not (args.pre or args.post or args.dashboard):
         parser.error("Select at least one: --pre, --post, --dashboard")
 
-    sys.path.append("/app/etl")
+    etl_dir = Path(__file__).resolve().parents[2] / "etl"
+    sys.path.append(str(etl_dir))
     import raw_sync as r
 
     pg = r.connect_pg()

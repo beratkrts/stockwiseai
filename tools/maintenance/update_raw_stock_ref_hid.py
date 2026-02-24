@@ -1,4 +1,5 @@
 import os
+import os
 from typing import Dict, Iterable, List, Tuple
 
 import firebirdsql
