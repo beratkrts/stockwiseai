@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Local env/secrets
+.env
+
+# Logs and runtime outputs
+logs/
+*.log
+
+# Generated data and backups
+backups/
+*.csv
+*.csv.gz
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Temporary helper files
+_*.py
+_*.txt

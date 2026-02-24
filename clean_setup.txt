@@ -1,0 +1,74 @@
+Clean Setup (PostgreSQL -> IIS Reverse Proxy)
+
+1) WSL Ubuntu 22.04 kurulumu
+   - wsl --install -d Ubuntu-22.04
+
+2) Ubuntu icinde Docker Engine kurulumu
+   - sudo apt update
+   - sudo apt install -y ca-certificates curl gnupg lsb-release
+   - sudo install -m 0755 -d /etc/apt/keyrings
+   - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+   - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+   - sudo apt update
+   - sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   - sudo usermod -aG docker $USER
+
+3) PostgreSQL 16 container
+   - docker pull postgres:16
+   - docker run --name postgres16 -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+
+4) Windows tarafinda .env (Postgres baglantisi)
+   - PG_HOST=127.0.0.1
+   - PG_PORT=5432
+   - PG_DB=tkis_stockwise
+   - PG_USER=postgres
+   - PG_PASSWORD=postgres
+
+5) Firebird ODBC (DSN) ayari
+   - FB_ODBC_DSN_FULL=test
+   - FB_ODBC_DSN_LIVE=live
+   - FB_HOST, FB_PORT, FB_DB, FB_CHARSET ayarlari .env icinde
+
+6) Python venv ve ETL bagimliliklari
+   - python -m venv .venv
+   - .\.venv\Scripts\Activate.ps1
+   - pip install -r etl/requirements.txt
+
+7) ETL baglanti testi
+   - python etl/test_connections.py
+
+8) ETL calistirma (ornek)
+   - python etl/raw_sync.py
+
+9) Backend (FastAPI) kurulum ve calistirma
+   - pip install -r backend/requirements.txt
+   - python -m uvicorn main:app --host 127.0.0.1 --port 8000
+
+10) Node.js kurulum ve frontend build
+   - winget install OpenJS.NodeJS.LTS
+   - cd frontend
+   - npm install
+   - npm run build
+
+11) IIS kurulumu (Windows 11)
+   - Windows Features -> Internet Information Services (IIS) aktif et
+   - Static Content ve Management Tools acik olsun
+
+12) IIS site ayari
+   - Site root: C:\Users\BERAT.KARATASOGLU\Desktop\tkis_stockwise\frontend\dist
+   - Binding: http://localhost (test icin) veya port 8080
+   - Anonymous Authentication: Enabled
+   - dist klasor izni: IUSR, IIS_IUSRS ve IIS AppPool\<app_pool_adi> icin Read & Execute
+
+13) URL Rewrite + ARR
+   - URL Rewrite kur
+   - ARR kur ve "Enable proxy" aktif et
+
+14) Reverse proxy kurali
+   - URL Rewrite -> Add Rule -> Blank Rule
+   - Match URL: ^api/(.*)
+   - Action URL: http://127.0.0.1:8000/{R:1}
+
+15) Test
+   - http://127.0.0.1:8000/health (backend)
+   - http://localhost:8080/api/health (IIS proxy)

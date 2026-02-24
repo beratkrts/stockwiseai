@@ -1,0 +1,6 @@
+fastapi==0.115.0
+uvicorn[standard]==0.23.2
+psycopg[binary,pool]==3.3.2
+pyodbc==5.1.0
+python-dotenv==1.0.1
+xlsxwriter==3.2.0
