@@ -83,6 +83,63 @@ c:\tkis_stockwise\.venv\Scripts\python.exe etl\raw_sync.py --full
 c:\tkis_stockwise\.venv\Scripts\python.exe etl\raw_sync.py
 ```
 
+## Forecast Mimarisi (Kritik Akis)
+
+Bu proje forecast tarafinda **hibrit model secimi** kullanir: tek bir model zorlanmaz, her malzeme icin backtest performansina gore en iyi model secilir.
+
+### Dosya ve SQL yolu (kritik)
+
+- Orkestrasyon: `etl/raw_sync.py`
+- Forecast runner: `etl/run_forecast.py`
+- Model/backtest motoru: `etl/forecast_backtest.py`
+- Weekly pre SQL: `etl/sql/core_weekly_pre_forecast.sql`
+- Weekly post SQL: `etl/sql/core_weekly_post_forecast.sql`
+- Monthly seat SQL: `etl/sql/core_monthly_seat.sql`
+
+### End-to-end sira
+
+1. `core_weekly_pre_forecast.sql`
+2. `FORECAST_COMMAND` ile `etl/run_forecast.py`
+3. `core_weekly_post_forecast.sql`
+
+`--bootstrap` akisinda bunun oncesinde:
+- full yukleme (full DSN),
+- canli DSN ile 1 tur incremental catch-up,
+- monthly seat refresh
+calisir.
+
+### Hibrit model yaklasimi
+
+`etl/forecast_backtest.py` icindeki model havuzu:
+- `TSB` (intermittent demand icin)
+- `ETS` (Exponential Smoothing, kosula bagli)
+- `MA4`, `MA13`, `MA26` (moving average aileleri)
+
+Secim mantigi:
+- Son 52 hafta rolling backtest yapilir.
+- Hedef metrik: `WAPE` (daha dusuk daha iyi).
+- Her malzeme icin en iyi model secilir (`chosen_method`).
+- Son 26 haftasi sifir olan malzemede `INACTIVE_ZERO` zorlanir (forecast=0).
+- Her malzeme icin ileri 12 hafta (`forecast_12w`) uretilir.
+
+Bu nedenle yaklasim "hibrit"tir: model secimi malzeme bazinda dinamiktir, global tek model yoktur.
+
+### Forecast ciktilari
+
+CSV ciktilari:
+- `material_level_backtest.csv`
+- `category_unit_backtest.csv`
+- `overall_backtest.csv`
+
+DB tablolari:
+- `core.final_forecast_summary`
+- `core.final_forecast`
+- `core.final_forecast_material_metrics`
+- `core.final_forecast_category_unit_metrics`
+- `core.final_forecast_overall_metrics`
+
+Dashboard/servis tarafi forecast verisini `core.final_forecast_summary` ve post SQL ile uretilen dashboard tablolari uzerinden kullanir.
+
 ## Servis Baslatma
 
 ```bat
@@ -124,4 +181,3 @@ Onemli:
 - ETL ana kodu: `etl/raw_sync.py`
 - Backend API: `backend/main.py`
 - SQL job dosyalari: `etl/sql/`
-- Kurulum notlari: `clean_setup.txt`, `kurulum_notlari.txt`
